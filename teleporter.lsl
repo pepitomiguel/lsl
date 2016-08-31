@@ -2,6 +2,7 @@ integer dialog_channel;
 integer textbox_channel;
 integer network_channel;
 integer dialogHandle;
+integer secret_key = "";
 
 string target_text = "Teleporter";
 string WarpLocation;
@@ -20,7 +21,7 @@ init()
     dialog_channel = channel();
     home_location = llGetPos();
     WarpLocation = llGetObjectName();
-    network_channel = 0x80000000 | (integer)("0x"+(string)llGetOwner()) + 712880;
+    network_channel = 0x80000000 | (integer)("0x"+(string)llGetOwner()) + secret_key;
     textbox_channel = (integer)llFrand(DEBUG_CHANNEL)*-1;
     llSitTarget(<0, 0, 0.5>, ZERO_ROTATION);
     llSetSitText(target_text);
