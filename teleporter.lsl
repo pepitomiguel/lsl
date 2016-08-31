@@ -7,7 +7,7 @@ integer secret_key = "";
 string target_text = "Teleporter";
 string WarpLocation;
 
-vector target_location = <60, 76, 1293>; // convert to vector array for the list of all possible location
+vector target_location = <60, 76, 1293>; // convert to list with the corresponding portal name and its vectors.
 vector home_location;
 
 integer channel()
@@ -73,7 +73,7 @@ default
                 warp(target_location);
                 llSleep(0.5);
                 llUnSit(sitter);
-                warp(home_location);
+                warp(home_location); // change the variable given by the listen events
             }
         }
     }
@@ -88,13 +88,18 @@ default
             llTextBox(llGetOwner(), "Rename this portal", textbox_channel);
         if(channel == textbox_channel)
             llSetObjectName(message);
-        
+        // TODO:
+        // listen for the message and check if it matches the available portal then extract the corresponding vector then
+        // pass it on the variable for the warp function.
+        // Listen for the llRegionSay won channel network_channel then scrape the data to be added on the target_location list
             
     }
         
     touch_start(integer i)
     {
-        llInstantMessage(llDetectedKey(0), "nRight click and select UP to go upstairs.");
+        //check if the id is owner then add a menu option to configure if the teleporter acces too group, owner, all, specific group uuid, specific avatar uuid
+        //Show all the possible portals depending on the owner's settings.
+        
     }
     
     timer()
