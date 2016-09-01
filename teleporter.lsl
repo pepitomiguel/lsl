@@ -2,13 +2,16 @@ integer dialog_channel;
 integer textbox_channel;
 integer network_channel;
 integer dialogHandle;
-integer secret_key = "";
+integer secret_key = ;
+integer dialog_active;
 
 string target_text = "Teleporter";
 string WarpLocation;
 
-vector target_location = <60, 76, 1293>; // convert to list with the corresponding portal name and its vectors.
+list target_location; // list with the corresponding portal name and its vectors.
+
 vector home_location;
+vector warp_vector;
 
 integer channel()
 { 
@@ -23,9 +26,14 @@ init()
     WarpLocation = llGetObjectName();
     network_channel = 0x80000000 | (integer)("0x"+(string)llGetOwner()) + secret_key;
     textbox_channel = (integer)llFrand(DEBUG_CHANNEL)*-1;
+    target_location = [ WarpLocation+":"+(string)home_location ];
+    
     llSitTarget(<0, 0, 0.5>, ZERO_ROTATION);
     llSetSitText(target_text);
-    llSetText(target_text, <0, 1, 0>, 1.0);    
+    llSetText(target_text, <0, 1, 0>, 1.0);
+    
+    llRegionSay(network_channel, WarpLocation +":"+ (string)home_location);
+    llSetTimerEvent(5.0);
 }
 
 warp(vector pos)
@@ -38,6 +46,8 @@ warp(vector pos)
 
 open_menu(key inputKey, string inputString, list inputList)
 {
+    llSetTimerEvent(0);
+    dialog_active = TRUE;
     dialogHandle = llListen(dialog_channel, "", inputKey, "");
     llDialog(inputKey, inputString, inputList, dialog_channel);
     llSetTimerEvent(60.0);
@@ -46,6 +56,7 @@ open_menu(key inputKey, string inputString, list inputList)
 close_menu()
 {
     llSetTimerEvent(0);
+    dialog_active = FALSE;
     llListenRemove(dialogHandle);
 }
  
@@ -69,8 +80,8 @@ default
             key sitter = llAvatarOnSitTarget();
             if (sitter != NULL_KEY)
             {
-                vector offset = (target_location - llGetPos()) / llGetRot();
-                warp(target_location);
+                vector offset = (warp_vector - llGetPos()) / llGetRot();
+                warp(warp_vector);
                 llSleep(0.5);
                 llUnSit(sitter);
                 warp(home_location); // change the variable given by the listen events
@@ -79,15 +90,25 @@ default
     }
     listen(integer channel, string name, key id, string message)
     {
-        if(channel != dialog_channel)
+        if(channel != dialog_channel || channel != textbox_channel)
             return;
              
         close_menu();
         
         if(message == "Rename")
             llTextBox(llGetOwner(), "Rename this portal", textbox_channel);
+        if(message == "OK")
+        {
+            list details = llGetObjectDetails(id,[OBJECT_POS]);
+            //ping each warp portal and get the corresponding position vector, if there is no reply remove the warp name
+            //listen to command "remove:<warp name>" and remove in the list the corresponding portal.
+        }
         if(channel == textbox_channel)
+        {
             llSetObjectName(message);
+            WarpLocation = llGetObjectName();
+            llRegionSay(network_channel, WarpLocation +":"+ (string)home_location);
+        }
         // TODO:
         // listen for the message and check if it matches the available portal then extract the corresponding vector then
         // pass it on the variable for the warp function.
@@ -104,6 +125,13 @@ default
     
     timer()
     {
-        close_menu();
+        if (dialog_active)
+            close_menu();
+        if(home_location != llGetPos())
+        {
+            llSay(0,"Position Changed");
+            home_location = llGetPos();
+            llRegionSay(network_channel, WarpLocation +":"+ (string)home_location);
+        }
     }    
 }
