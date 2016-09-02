@@ -2,13 +2,14 @@ integer dialog_channel;
 integer textbox_channel;
 integer network_channel;
 integer dialogHandle;
-integer secret_key = ;
+integer secret_key = 712880;
 integer dialog_active;
 
 string target_text = "Teleporter";
 string WarpLocation;
 
 list target_location; // list with the corresponding portal name and its vectors.
+list details;
 
 vector home_location;
 vector warp_vector;
@@ -84,30 +85,43 @@ default
                 warp(warp_vector);
                 llSleep(0.5);
                 llUnSit(sitter);
-                warp(home_location); // change the variable given by the listen events
+                warp(home_location);
             }
         }
     }
     listen(integer channel, string name, key id, string message)
     {
-        if(channel != dialog_channel || channel != textbox_channel)
-            return;
+        //if(channel != dialog_channel || channel != textbox_channel)
+            //return;
              
         close_menu();
-        
-        if(message == "Rename")
-            llTextBox(llGetOwner(), "Rename this portal", textbox_channel);
-        if(message == "OK")
+        if(channel == dialog_channel)
         {
-            list details = llGetObjectDetails(id,[OBJECT_POS]);
+            if(message == "Rename")
+            {
+                dialogHandle = llListen(textbox_channel, "", llGetOwner(), "");
+                llTextBox(llGetOwner(), "Rename this portal", textbox_channel);
+                dialog_active = FALSE;
+            }
+        }
+        if(channel == network_channel)
+        {
+            list responders = llGetObjectDetails(id,[OBJECT_NAME]);
+            target_location = [llList2String(responders,0) + ":"+message];
+            //debug
+            llOwnerSay("Added: " + llList2String(responders,0) + ":"+message);
+            // rename the variable
             //ping each warp portal and get the corresponding position vector, if there is no reply remove the warp name
-            //listen to command "remove:<warp name>" and remove in the list the corresponding portal.
+            //count the number of entry in target_location then compare it to details list, if its greater add the new entry, else delete the missing entry.
+            
         }
         if(channel == textbox_channel)
         {
             llSetObjectName(message);
             WarpLocation = llGetObjectName();
-            llRegionSay(network_channel, WarpLocation +":"+ (string)home_location);
+            llRegionSay(network_channel, (string)home_location);
+            llOwnerSay("Renaming to: " +message);
+            dialog_active = TRUE;
         }
         // TODO:
         // listen for the message and check if it matches the available portal then extract the corresponding vector then
@@ -120,13 +134,12 @@ default
     {
         //check if the id is owner then add a menu option to configure if the teleporter acces too group, owner, all, specific group uuid, specific avatar uuid
         //Show all the possible portals depending on the owner's settings.
-        
     }
     
     timer()
     {
-        if (dialog_active)
-            close_menu();
+        //if (dialog_active)
+            //close_menu();
         if(home_location != llGetPos())
         {
             llSay(0,"Position Changed");
