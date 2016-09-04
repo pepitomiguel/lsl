@@ -1,150 +1,189 @@
-integer dialog_channel;
-integer textbox_channel;
-integer network_channel;
-integer dialogHandle;
-integer secret_key = 712880;
-integer dialog_active;
+integer CHANNEL = -10001;
+float INTERVAL = 10.0;
+vector OFFSET = <0.0,0.0,1.2>;
 
-string target_text = "Teleporter";
-string WarpLocation;
+integer number = 1;
+list descriptions = [];
+list positions = [];
+list timestamps = [];
 
-list target_location; // list with the corresponding portal name and its vectors.
-list details;
-
-vector home_location;
-vector warp_vector;
-
-integer channel()
-{ 
-    return ((integer)("0x"+llGetSubString((string)llGetKey(),-8,-1)) & 0x3FFFFFFF) ^ 0xBFFFFFFF;
-}
-
-
-init()
+// Function present menu items in more logical ordering.
+list orderButtons(list buttons)
 {
-    dialog_channel = channel();
-    home_location = llGetPos();
-    WarpLocation = llGetObjectName();
-    network_channel = 0x80000000 | (integer)("0x"+(string)llGetOwner()) + secret_key;
-    textbox_channel = (integer)llFrand(DEBUG_CHANNEL)*-1;
-    target_location = [ WarpLocation+":"+(string)home_location ];
-    
-    llSitTarget(<0, 0, 0.5>, ZERO_ROTATION);
-    llSetSitText(target_text);
-    llSetText(target_text, <0, 1, 0>, 1.0);
-    
-    llRegionSay(network_channel, WarpLocation +":"+ (string)home_location);
-    llSetTimerEvent(5.0);
+    return(llList2List(buttons, -3, -1) + llList2List(buttons, -6, -4)
+         + llList2List(buttons, -9, -7) + llList2List(buttons, -12, -10));
 }
 
-warp(vector pos)
-{
-    list rules;
-    integer num = llCeil(llVecDist(llGetPos(),pos)/10);
-    while(num--)rules=(rules=[])+rules+[PRIM_POSITION,pos];
-    llSetPrimitiveParams(rules);
-}
-
-open_menu(key inputKey, string inputString, list inputList)
-{
-    llSetTimerEvent(0);
-    dialog_active = TRUE;
-    dialogHandle = llListen(dialog_channel, "", inputKey, "");
-    llDialog(inputKey, inputString, inputList, dialog_channel);
-    llSetTimerEvent(60.0);
-}
-
-close_menu()
-{
-    llSetTimerEvent(0);
-    dialog_active = FALSE;
-    llListenRemove(dialogHandle);
-}
- 
 default
 {
-    on_rez(integer params)
-    {
-        init();
-        open_menu(llGetOwner(), "Mark this teleporter as " + WarpLocation, ["Yes", "Rename"]);
-    }
 
     state_entry()
     {
-        init();
+
+        // Announce teleporter and setup timer to maintain teleporter list.
+        key owner = llGetOwner();
+        string description = llGetObjectDesc();
+        if (description == "<Location name>") {
+            description = (string)number;
+        }
+        vector position = llGetPos();
+        llRegionSay(CHANNEL, "teleporter\t" + (string)owner + "\t" + description + "\t" + (string)position);
+        llSetTimerEvent(INTERVAL);
+        
+        // Setup listener to receive teleporter announcements and user dialog.
+        llListen(CHANNEL, "", "", "");
+        
+        // Configure sit text and target.
+        llSetSitText("Teleport");
+        llSitTarget(OFFSET, ZERO_ROTATION);
+        
     }
 
     changed(integer change)
     {
-        if (change & CHANGED_LINK)
-        {
-            key sitter = llAvatarOnSitTarget();
-            if (sitter != NULL_KEY)
-            {
-                vector offset = (warp_vector - llGetPos()) / llGetRot();
-                warp(warp_vector);
-                llSleep(0.5);
-                llUnSit(sitter);
-                warp(home_location);
+        
+        // Check if someone sits on the teleporter.
+        if (change & CHANGED_LINK) {
+            key id = llAvatarOnSitTarget();
+            if (id) {
+                if (llGetInventoryNumber(INVENTORY_ANIMATION) >= 1) {
+                    llRequestPermissions(id, PERMISSION_TRIGGER_ANIMATION);
+                }
+                if (llGetInventoryNumber(INVENTORY_SOUND) >= 1) {
+                    llPlaySound(llGetInventoryName(INVENTORY_SOUND, 0), 1.0);
+                }
+                integer count = llGetListLength(descriptions);
+                if (count >= 2) {
+                    list buttons = orderButtons(llListSort(descriptions, 1, TRUE));
+                    llDialog(id, "Select destination:", buttons, CHANNEL);
+                }
+                else if (count == 1) {
+                    vector position = llGetPos();
+                    llSleep(0.5);
+                    if (llSubStringIndex(llList2String(descriptions, 0), "*") == 0 && !llSameGroup(id)) {
+                        llRegionSayTo(id, 0, "Only group members are allowed to teleport to locations marked with '*'");
+                        llUnSit(id);
+                    }
+                    else if (llSubStringIndex(llList2String(descriptions, 0), "!") == 0 && id != llGetOwner()) {
+                        llRegionSayTo(id, 0, "Only the owner are allowed to teleport to locations marked with '!'");
+                        llUnSit(id);
+                    }
+                    else {
+                        llSetRegionPos(llList2Vector(positions, 0));
+                        llUnSit(id);
+                        llSetRegionPos(position);
+                    }
+                }
+                else {
+                    llSleep(0.5);
+                    llUnSit(id);
+                }
             }
         }
+        
+        // Reset the script if the teleporter has changed owner or been moved across a sim border.
+        if (change & (CHANGED_OWNER|CHANGED_REGION)) {
+            llResetScript();
+        }
+        
     }
+
     listen(integer channel, string name, key id, string message)
     {
-        //if(channel != dialog_channel || channel != textbox_channel)
-            //return;
-             
-        close_menu();
-        if(channel == dialog_channel)
-        {
-            if(message == "Rename")
-            {
-                dialogHandle = llListen(textbox_channel, "", llGetOwner(), "");
-                llTextBox(llGetOwner(), "Rename this portal", textbox_channel);
-                dialog_active = FALSE;
-            }
-        }
-        if(channel == network_channel)
-        {
-            list responders = llGetObjectDetails(id,[OBJECT_NAME]);
-            target_location = [llList2String(responders,0) + ":"+message];
-            //debug
-            llOwnerSay("Added: " + llList2String(responders,0) + ":"+message);
-            // rename the variable
-            //ping each warp portal and get the corresponding position vector, if there is no reply remove the warp name
-            //count the number of entry in target_location then compare it to details list, if its greater add the new entry, else delete the missing entry.
-            
-        }
-        if(channel == textbox_channel)
-        {
-            llSetObjectName(message);
-            WarpLocation = llGetObjectName();
-            llRegionSay(network_channel, (string)home_location);
-            llOwnerSay("Renaming to: " +message);
-            dialog_active = TRUE;
-        }
-        // TODO:
-        // listen for the message and check if it matches the available portal then extract the corresponding vector then
-        // pass it on the variable for the warp function.
-        // Listen for the llRegionSay won channel network_channel then scrape the data to be added on the target_location list
-            
-    }
         
-    touch_start(integer i)
-    {
-        //check if the id is owner then add a menu option to configure if the teleporter acces too group, owner, all, specific group uuid, specific avatar uuid
-        //Show all the possible portals depending on the owner's settings.
+        if (id == llAvatarOnSitTarget()) {
+            
+            // Teleport avatar to destination.
+            integer index = llListFindList(descriptions, [message]);
+            vector position = llGetPos();
+            if (llSubStringIndex(llList2String(descriptions, index), "*") == 0 && !llSameGroup(id)) {
+                llRegionSayTo(id, 0, "Only group members are allowed to teleport to locations marked with '*'");
+                llUnSit(id);
+            }
+            else if (llSubStringIndex(llList2String(descriptions, index), "!") == 0 && id != llGetOwner()) {
+                llRegionSayTo(id, 0, "Only the owner is allowed to teleport to locations marked with '!'");
+                llUnSit(id);
+            }
+            else {
+                llSetRegionPos(llList2Vector(positions, index));
+                llUnSit(id);
+                llSetRegionPos(position);
+            }
+            
+        }
+        else {
+            
+            // Parse the received message.
+            list tokens = llParseString2List(message, ["\t"], []);
+            string check = llList2String(tokens, 0);
+            key owner = (key)llList2String(tokens, 1);
+            string description = llList2String(tokens, 2);
+            vector position = (vector)llList2String(tokens, 3);
+            integer timestamp = llGetUnixTime();
+            
+            // Remove old data from the lists and add current data.
+            if (check == "teleporter" && owner == llGetOwner()) {
+                integer index = llListFindList(descriptions, [description]);
+                if (~index) {
+                    descriptions = llDeleteSubList(descriptions, index, index);
+                    positions = llDeleteSubList(positions, index, index);
+                    timestamps = llDeleteSubList(timestamps, index, index);
+                }
+                descriptions += description;
+                positions += position;
+                timestamps += timestamp;
+            }
+            
+            // Renumber this teleporter if another has same number.
+            if ((string)number == description) {
+                number++;
+                if (number > 12) {
+                    number = 1;
+                }
+            }
+            
+        }
+        
     }
-    
+
+    on_rez(integer n)
+    {
+        
+        // Reset the script when the teleporter is rezzed.
+        llResetScript();
+        
+    }
+
+    run_time_permissions(integer perm)
+    {
+        
+        // Play animation when permission has been granted.
+        if (perm & PERMISSION_TRIGGER_ANIMATION) {
+            llStartAnimation(llGetInventoryName(INVENTORY_ANIMATION,0));
+        }
+        
+    }
+
     timer()
     {
-        //if (dialog_active)
-            //close_menu();
-        if(home_location != llGetPos())
-        {
-            llSay(0,"Position Changed");
-            home_location = llGetPos();
-            llRegionSay(network_channel, WarpLocation +":"+ (string)home_location);
+        
+        // Announce the teleporter.
+        key owner = llGetOwner();
+        string description = llGetObjectDesc();
+        if (description == "<Location name>") {
+            description = (string)number;
         }
-    }    
+        vector position = llGetPos();
+        integer timestamp = llGetUnixTime();
+        llRegionSay(CHANNEL, "teleporter\t" + (string)owner + "\t" + description + "\t" + (string)position);
+        
+        // Delete oldest teleporter from list if it is too old.
+        if (llGetListLength(timestamps) && timestamp-llList2Integer(timestamps, 0) > INTERVAL+1.0) {
+            descriptions = llDeleteSubList(descriptions, 0, 0);
+            positions = llDeleteSubList(positions, 0, 0);
+            timestamps = llDeleteSubList(timestamps, 0, 0);
+        }
+        
+    }
+
 }
